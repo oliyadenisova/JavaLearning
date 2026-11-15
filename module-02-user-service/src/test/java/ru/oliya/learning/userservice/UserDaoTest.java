@@ -1,18 +1,57 @@
 package ru.oliya.learning.userservice;
 
-import org.junit.jupiter.api.AfterEach;
+import org.hibernate.SessionFactory;
+import org.hibernate.Session;
+import org.hibernate.Transaction;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.postgresql.PostgreSQLContainer;
 import ru.oliya.learning.userservice.dao.UserDao;
 import ru.oliya.learning.userservice.entity.User;
-
 import java.util.List;
 import java.util.UUID;
-
 import static org.junit.jupiter.api.Assertions.*;
 
+@Testcontainers
 public class UserDaoTest {
-    private final UserDao userDao = new UserDao();
-    private Long createdUserId;
+    @Container
+    private static final PostgreSQLContainer POSTGRES = TestDatabase.POSTGRES;
+    private static SessionFactory sessionFactory;
+    private static UserDao userDao;
+
+    @BeforeAll
+    static void setUp() {
+        sessionFactory = TestDatabase.buildSessionFactory();
+        userDao = new UserDao(sessionFactory);
+    }
+
+    @AfterAll
+    static void tearDown() {
+        if (sessionFactory != null) {
+            sessionFactory.close();
+        }
+    }
+
+    @BeforeEach
+    void cleanUp() {
+        try (Session session = sessionFactory.openSession()) {
+            Transaction transaction = session.beginTransaction();
+            try {session.createNativeMutationQuery(
+                    "TRUNCATE TABLE users RESTART IDENTITY CASCADE"
+                ).executeUpdate();
+                transaction.commit();
+            } catch (RuntimeException e) {
+                if (transaction.isActive()) {
+                    transaction.rollback();
+                }
+                throw e;
+            }
+        }
+    }
 
     @Test
     void shouldSaveUser() {
@@ -25,14 +64,6 @@ public class UserDaoTest {
         assertEquals("Test User", savedUser.getName());
         assertEquals(email, savedUser.getEmail());
         assertEquals(25, savedUser.getAge());
-        createdUserId = savedUser.getId();
-    }
-
-    @AfterEach
-    void cleanUp() {
-        if (createdUserId != null) {
-            userDao.deleteById(createdUserId);
-        }
     }
 
     @Test
@@ -40,10 +71,9 @@ public class UserDaoTest {
         String email = "test-" + UUID.randomUUID() + "@example.com";
         User user = new User("Find Test", email, 30);
         userDao.save(user);
-        createdUserId = user.getId();
-        User foundUser = userDao.findById(createdUserId);
+        User foundUser = userDao.findById(user.getId());
         assertNotNull(foundUser);
-        assertEquals(createdUserId, foundUser.getId());
+        assertEquals(user.getId(), foundUser.getId());
         assertEquals("Find Test", foundUser.getName());
         assertEquals(email, foundUser.getEmail());
     }
@@ -59,11 +89,10 @@ public class UserDaoTest {
         String email = "test-" + UUID.randomUUID() + "@example.com";
         User user = new User("Old Name", email, 25);
         userDao.save(user);
-        createdUserId = user.getId();
         user.setName("New Name");
         user.setAge(26);
         userDao.update(user);
-        User updatedUser = userDao.findById(createdUserId);
+        User updatedUser = userDao.findById(user.getId());
         assertNotNull(updatedUser);
         assertEquals("New Name", updatedUser.getName());
         assertEquals(26, updatedUser.getAge());
@@ -75,9 +104,7 @@ public class UserDaoTest {
         String email = "test-" + UUID.randomUUID() + "@example.com";
         User user = new User("Delete Test", email, 35);
         userDao.save(user);
-        createdUserId = user.getId();
-        userDao.deleteById(createdUserId);
-        createdUserId = null;
+        userDao.deleteById(user.getId());
         User deletedUser = userDao.findById(user.getId());
         assertNull(deletedUser);
     }
@@ -87,11 +114,17 @@ public class UserDaoTest {
         String email = "test-" + UUID.randomUUID() + "@example.com";
         User user = new User("List Test", email, 28);
         userDao.save(user);
-        createdUserId = user.getId();
         List<User> users = userDao.findAll();
         assertNotNull(users);
-        assertTrue(users.stream()
-                .anyMatch(found -> found.getId().equals(createdUserId)));
+        assertEquals(1, users.size());
+        assertTrue(users.stream().anyMatch(found -> found.getId().equals(user.getId())));
+    }
+
+    @Test
+    void shouldReturnEmptyListWhenNoUsersExist() {
+        List<User> users = userDao.findAll();
+        assertNotNull(users, "Метод должен возвращать список, а не null");
+        assertTrue(users.isEmpty(), "Список должен быть пустым");
     }
 
     @Test
@@ -99,6 +132,19 @@ public class UserDaoTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> userDao.deleteById(-1L)
+        );
+    }
+
+    @Test
+    void shouldThrowExceptionWhenUpdatingNonExistingUser() {
+        String email = "test-" + UUID.randomUUID() + "@example.com";
+        User user = new User("Update Test", email, 30);
+        userDao.save(user);
+        userDao.deleteById(user.getId());
+        RuntimeException exception = assertThrows(
+                RuntimeException.class, () -> userDao.update(user));
+        assertInstanceOf(
+                IllegalArgumentException.class, exception.getCause()
         );
     }
 }

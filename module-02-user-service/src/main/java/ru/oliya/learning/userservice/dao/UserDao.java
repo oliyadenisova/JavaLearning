@@ -14,7 +14,10 @@ public class UserDao {
             LoggerFactory.getLogger(UserDao.class);
     private final SessionFactory sessionFactory;
     public UserDao() {
-        this.sessionFactory = HibernateUtil.getSessionFactory();
+        this(HibernateUtil.getSessionFactory());
+    }
+    public UserDao(SessionFactory sessionFactory) {
+        this.sessionFactory = sessionFactory;
     }
 
     public void save(User user) {
