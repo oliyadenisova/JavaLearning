@@ -1,0 +1,12 @@
+### Получить всех пользователей
+GET http://localhost:8080/api/users
+
+### Создать пользователя
+POST http://localhost:8080/api/users
+Content-Type: application/json
+
+{
+  "name": "Ольга",
+  "email": "olga.new@example.com",
+  "age": 30
+}

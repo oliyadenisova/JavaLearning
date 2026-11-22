@@ -12,7 +12,7 @@
 
 <modules>
     <module>module-01-collections</module>
-    <module>module-02-user-service</module>
+    <module>module-04-user-service-spring</module>
 </modules>
 
 <properties>
